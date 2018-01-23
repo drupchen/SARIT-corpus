@@ -11,54 +11,54 @@ s = SandhiEngine('sanskrit')
 fa = FindApplicableSandhis('sanskrit')
 
 
-def generate_perms(elts):
+def generate_perms(elts, trie):
     # limit the length of combinations to 3, following beginning of p.3 of:
     # https://www.asc.ohio-state.edu/papke.5/downloads/ICHLhandout.pdf
-    permuts = []
+
+    # 1. simple elements, first as-is, then sandhied
+    for e in elts:
+        key = sanscript.transliterate(e, _from=SLP, _to=DEVA)
+        trie.add(key, data=key)
+
+    sandhied_potentials = {a.split(',')[0]: p for p in elts for a in fa.all_possible_sandhis(p)}
+    for k, v in sandhied_potentials.items():
+        key = sanscript.transliterate(k, _from=SLP, _to=DEVA)
+        trie.add(key, data=v)
+
+    # 2. all permutations of any two preverbs, first as-is, then sandhied
     for a, b in list(permutations(elts, r=2)):
         potentials = s.apply_sandhi(a, b)
         potentials = [p.replace(' ', '') for p in potentials]
-        sandhied_potentials = [a.split(',')[0] for p in potentials for a in fa.all_possible_sandhis(p)]
-        for pot in sandhied_potentials:
+        for pot in potentials:
             key = sanscript.transliterate(pot, _from=SLP, _to=DEVA)
-            permuts.append(key)
+            trie.add(key, data=pot)
 
+        sandhied_potentials = {a.split(',')[0]: p for p in potentials for a in fa.all_possible_sandhis(p)}
+        for k, v in sandhied_potentials.items():
+            key = sanscript.transliterate(k, _from=SLP, _to=DEVA)
+            trie.add(key, data=v)
+
+    # 3. all permutations of any three preverbs, first as-is, then sandhied
     for a, b, c in list(permutations(elts, r=3)):
         first_potentials = s.apply_sandhi(a, b)
         potentials = [p.replace(' ', '') for p in first_potentials]
         for p in potentials:
             p_potentials = s.apply_sandhi(p, c)
             p_potentials = [p.replace(' ', '') for p in p_potentials]
-            sandhied_p_potentials = [a.split(',')[0] for p in p_potentials for a in fa.all_possible_sandhis(p)]
-            for key in sandhied_p_potentials:
-                permuts.append(key)
-    return permuts
+            for pot in p_potentials:
+                key = sanscript.transliterate(pot, _from=SLP, _to=DEVA)
+                trie.add(key, data=pot)
+
+            sandhied_p_potentials = {a.split(',')[0]: p for p in p_potentials for a in fa.all_possible_sandhis(p)}
+            for k, v in sandhied_p_potentials.items():
+                key = sanscript.transliterate(k, _from=SLP, _to=DEVA)
+                trie.add(key, data=v)
 
 
 # the list of the 22 preverbs taken from:
 # https://en.wikipedia.org/wiki/Upasarga
 preverbs = ['ati', 'aDi', 'anu', 'apa', 'api', 'aBi', 'ava', 'A', 'ut', 'ud', 'upa',
             'duH', 'ni', 'niH', 'parA', 'pari', 'pra', 'prati', 'vi', 'sam', 'su']
-total_perms = generate_perms(preverbs)
-total_perms = [sanscript.transliterate(t, _from=SLP, _to=DEVA) for t in total_perms]
-
-trie = Trie()
-for perm in total_perms:
-    trie.add(perm)
-
-corpus_path = 'corpus'
-corpus_names = [corpus_path+'/'+a for a in os.listdir(corpus_path)]
-
-matches = {}
-for f in corpus_names:
-    with open(f, 'r') as g:
-        content = g.read()
-    trie.find_matches(content, matches)
-
-found_combinations = []
-for k, v in matches.items():
-    if len(v) > 0:
-        found_combinations.append((sanscript.transliterate(k, _from=DEVA, _to=SLP), len(v)))
 
 SH_preverbs = ["ati", "aDi", "aDyava", "aDyA", "anu", "anuni", "anuparA", "anupra", "anuvi", "anuvyava", "anusam",
                "antar", "anvA", "apa", "apA", "aBi", "aBini", "aBipra", "aBivi", "aBivyA", "aBisam", "aByanu", "aByava",
@@ -72,20 +72,40 @@ SH_preverbs = ["ati", "aDi", "aDyava", "aDyA", "anu", "anuni", "anuparA", "anupr
                "samalam", "samava", "samA", "samut", "samudA", "samudvi", "samupa", "samupA", "sampra", "samprati",
                "sampravi"]
 
-hundred = sorted(found_combinations, key=lambda x: x[1], reverse=True)[:110]
-hundred = [a[0] for a in hundred]
+# A. prepare the Trie
+trie = Trie()
 
-only_SH, only_preverb, common = [], [], []
-for pre in hundred:
-    pre = pre
-    if pre in SH_preverbs:
-        common.append(pre)
-    else:
-        only_preverb.append(pre)
-for pre in SH_preverbs:
-    if pre not in hundred:
-        only_SH.append(pre)
+# add permutations of preverbs
+generate_perms(preverbs, trie)
 
-print(only_SH)
-print(only_preverb)
-print(common)
+# add preverbs only found in the SH list
+SH_only_preverbs = ["antar", "alam", "Avis", "tiras", "puras", "praRi", "bahis", "sanni", "samalam", "sampra",
+                    "samprati", "sampravi"]
+for pre in SH_only_preverbs:
+    trie.add(sanscript.transliterate(pre, _from=SLP, _to=DEVA))
+
+corpus_path = 'corpus'
+corpus_names = [corpus_path+'/'+a for a in os.listdir(corpus_path)]
+
+matches = {}
+for f in corpus_names:
+    with open(f, 'r') as g:
+        content = g.read()
+    trie.max_match(content, matches)
+
+found_combinations = []
+for k, v in matches.items():
+    if len(v) > 0:
+        unsandhied = v[0][1]
+        if not unsandhied:
+            unsandhied = ''
+        found_combinations.append((sanscript.transliterate(k, _from=DEVA, _to=SLP), len(v), unsandhied))
+
+found_preverbs = sorted(found_combinations, key=lambda x: x[1], reverse=True)
+
+with open('SARIT_preverbs.txt', 'w') as f:
+    out = []
+    for p in found_preverbs:
+        if p[2]:
+            out.append('{}\t{}\t{}'.format(p[0], p[1], p[2]))
+    f.write('\n'.join(out))

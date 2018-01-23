@@ -1,10 +1,11 @@
 class Node:
-    def __init__(self, label=None, match=False):
+    def __init__(self, label=None, match=False, data=None):
         self.label = label
         self.match = match
+        self.data = data
         self.children = dict()
 
-    def addChild(self, key, match=False):
+    def add_child(self, key, match=False):
         if not isinstance(key, Node):
             self.children[key] = Node(key, match)
         else:
@@ -21,7 +22,7 @@ class Trie:
     def __getitem__(self, key):
         return self.head.children[key]
 
-    def add(self, word):
+    def add(self, word, data=None):
         current_node = self.head
         word_finished = True
 
@@ -35,13 +36,15 @@ class Trie:
         # For ever new letter, create a new child node
         if not word_finished:
             while i < len(word):
-                current_node.addChild(word[i])
+                current_node.add_child(word[i])
                 current_node = current_node.children[word[i]]
                 i += 1
 
         # Let's store the full word at the end node so we don't need to
         # travel back up the tree to reconstruct the word
         current_node.match = True
+        if data:
+            current_node.data = data
 
     def walk(self, char, current_node=None):
         if not current_node:
@@ -52,9 +55,44 @@ class Trie:
         else:
             next_node = None
 
-        match = current_node.match
+        match, data = current_node.match, current_node.data
 
-        return next_node, match
+        return next_node, match, data
+
+    def max_match(self, in_str, res):
+        """
+
+        :param (string) in_str: input string
+        :param (dict) res: the matches with the indices for each match are stored in this dict
+        """
+        start = 0
+        matches = []
+        current_node = None
+        for i, c in enumerate(in_str):
+
+            if current_node:
+                current_node, match, data = self.walk(c, current_node)
+            else:
+                current_node, match, data = self.walk(c, self.head)
+
+            # add non-maximal matches
+            if match:
+                matches.append(i)
+
+            # take longest match
+            if not current_node and matches != []:
+                key = (start, matches[-1])  # take the longest match
+                key_str = in_str[key[0]:key[1]]
+                if key_str not in res.keys():
+                    res[key_str] = [(key, data)]
+                else:
+                    res[key_str].append((key, data))
+
+            # update vars
+            if not current_node:
+                if matches != []:
+                    matches = []
+                start = i + 1
 
     def has_word(self, word):
         if word == '':
@@ -79,42 +117,6 @@ class Trie:
                 exists = False
 
         return exists
-
-    def find_matches(self, in_str, res):
-        """
-
-        :param (string) in_str: input string
-        :param (dict) res: the matches with the indices for each match are stored in this dict
-        """
-        start = 0
-        matches = []
-        current_node = None
-        for i, c in enumerate(in_str):
-
-            if current_node:
-                current_node, match = self.walk(c, current_node)
-            else:
-                current_node, match = self.walk(c, self.head)
-
-            # add non-maximal matches
-            if match:
-                matches.append(i)
-
-            # take longest match
-            if not current_node and matches != []:
-                keys = [(start, m) for m in matches]
-                for key in keys:
-                    key_str = in_str[key[0]:key[1]+1]
-                    if key_str not in res.keys():
-                        res[key_str] = [key]
-                    else:
-                        res[key_str].append(key)
-
-            # update vars
-            if not current_node:
-                if matches != []:
-                    matches = []
-                start = i + 1
 
 
 if __name__ == '__main__':
